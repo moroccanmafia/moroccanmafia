@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dépôt d'images</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial; background: linear-gradient(135deg, #667eea, #764ba2); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .card { background: white; border-radius: 20px; padding: 20px; margin-bottom: 20px; }
+        h1, h2 { margin-bottom: 15px; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .badge { padding: 4px 12px; border-radius: 20px; font-size: 12px; background: #48bb78; color: white; }
+        .badge.admin { background: #f56565; }
+        .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 20px 0; }
+        .cell { aspect-ratio: 1; background: #f5f5f5; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 2px dashed #ccc; position: relative; overflow: hidden; }
+        .cell.filled { border: 2px solid #4caf50; }
+        .cell img { width: 100%; height: 100%; object-fit: cover; }
+        .delete-btn { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; }
+        input, button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; border: 1px solid #ddd; }
+        button { background: #667eea; color: white; border: none; cursor: pointer; }
+        button.danger { background: #f56565; width: auto; padding: 8px 15px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        .stat { text-align: center; padding: 15px; background: #f8f9fa; border-radius: 12px; }
+        .stat-number { font-size: 28px; font-weight: bold; color: #667eea; }
+        .admin-layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+        .user-list { max-height: 500px; overflow-y: auto; border: 1px solid #eee; border-radius: 12px; }
+        .user-item { padding: 12px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .user-item:hover { background: #f5f5f5; }
+        .user-name { font-weight: bold; }
+        .user-email { font-size: 11px; color: #888; }
+        .user-stats { display: flex; gap: 3px; }
+        .mini-dot { width: 20px; height: 20px; border-radius: 4px; background: #ddd; }
+        .mini-dot.filled { background: #48bb78; }
+        @media (max-width: 700px) { .admin-layout { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container" id="app">Chargement...</div>
+
+    <script type="importmap">
+        { "imports": { "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2" } }
+    </script>
+
+    <script type="module">
+        import { createClient } from '@supabase/supabase-js';
+        
+        const SUPABASE_URL = 'https://caxqjaocixioznpcqycb.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_sCDloPHPfGqbHx9kIgB0pQ_iBtMfPB6';
+        const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        let currentUser = null;
+        let allUsers = [];
+        let myImages = {1:null,2:null,3:null,4:null,5:null};
+        
+        // ============ AUTHENTIFICATION ============
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) { alert(error.message); return; }
+            currentUser = data.user;
+            
+            // Charger mes images
+            const { data: deposits } = await supabase.from('deposits').select('*').eq('user_id', currentUser.id);
+            myImages = {1:null,2:null,3:null,4:null,5:null};
+            if (deposits) deposits.forEach(d => myImages[d.column_number] = d.image_url);
+            
+            // Vérifier si admin
+            const { data: userData } = await supabase.from('users').select('role').eq('id', currentUser.id).single();
+            const isAdmin = userData?.role === 'admin';
+            
+            if (isAdmin) {
+                // Charger tous les utilisateurs
+                const { data: users } = await supabase.from('users').select('*');
+                allUsers = users || [];
+                console.log('Utilisateurs chargés:', allUsers.length);
+                showAdminApp();
+            } else {
+                showUserApp();
+            }
+        }
+        
+        async function register() {
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } });
+            if (error) { alert(error.message); return; }
+            if (data.user) {
+                await supabase.from('users').insert([{ id: data.user.id, email, full_name: name || email.split('@')[0], role: 'user' }]);
+            }
+            alert('Compte créé ! Connectez-vous');
+            showLogin();
+        }
+        
+        // ============ AFFICHAGE ============
+        function showLogin() {
+            document.getElementById('app').innerHTML = `
+                <div class="card" style="max-width:400px;margin:0 auto;">
+                    <h1>📸 Dépôt d'images</h1>
+                    <input type="email" id="email" placeholder="Email">
+                    <input type="password" id="password" placeholder="Mot de passe">
+                    <button id="loginBtn">Se connecter</button>
+                    <button id="registerBtn" style="background:#48bb78">Créer un compte</button>
+                </div>
+            `;
+            document.getElementById('loginBtn').onclick = login;
+            document.getElementById('registerBtn').onclick = () => showRegister();
+        }
+        
+        function showRegister() {
+            document.getElementById('app').innerHTML = `
+                <div class="card" style="max-width:400px;margin:0 auto;">
+                    <h1>📝 Créer un compte</h1>
+                    <input type="text" id="name" placeholder="Nom complet">
+                    <input type="email" id="email" placeholder="Email">
+                    <input type="password" id="password" placeholder="Mot de passe">
+                    <button id="registerBtn">S'inscrire</button>
+                    <button id="backBtn">Retour</button>
+                </div>
+            `;
+            document.getElementById('registerBtn').onclick = register;
+            document.getElementById('backBtn').onclick = showLogin;
+        }
+        
+        function showUserApp() {
+            const filled = Object.values(myImages).filter(v=>v).length;
+            document.getElementById('app').innerHTML = `
+                <div class="card">
+                    <div class="flex-between">
+                        <h1>Mes images <span class="badge">Utilisateur</span></h1>
+                        <button id="logoutBtn" class="danger">Déconnexion</button>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat"><div class="stat-number">${filled}/5</div><div>Images</div></div>
+                    </div>
+                    <div class="grid-5" id="myGrid"></div>
+                </div>
+            `;
+            document.getElementById('logoutBtn').onclick = logout;
+            renderMyGrid();
+        }
+        
+        function showAdminApp() {
+            const filled = Object.values(myImages).filter(v=>v).length;
+            document.getElementById('app').innerHTML = `
+                <div class="card">
+                    <div class="flex-between">
+                        <h1>Mes images <span class="badge admin">Administrateur</span></h1>
+                        <button id="logoutBtn" class="danger">Déconnexion</button>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat"><div class="stat-number">${filled}/5</div><div>Mes images</div></div>
+                        <div class="stat"><div class="stat-number">${allUsers.length}</div><div>Utilisateurs</div></div>
+                    </div>
+                    <div class="grid-5" id="myGrid"></div>
+                </div>
+                <div class="card">
+                    <h2>👑 Utilisateurs (${allUsers.length})</h2>
+                    <div class="admin-layout">
+                        <div><div id="userListContainer"></div></div>
+                        <div><div id="userImagesGrid" class="grid-5"></div></div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('logoutBtn').onclick = logout;
+            renderMyGrid();
+            renderUserList();
+        }
+        
+        function renderMyGrid() {
+            const grid = document.getElementById('myGrid');
+            if (!grid) return;
+            let html = '';
+            for (let i=1;i<=5;i++) {
+                if (myImages[i]) {
+                    html += `<div class="cell filled" onclick="viewImage('${myImages[i]}')"><img src="${myImages[i]}"><button class="delete-btn" onclick="event.stopPropagation(); deleteImage(${i})">✕</button></div>`;
+                } else {
+                    html += `<div class="cell" onclick="uploadImage(${i})"><div style="text-align:center"><span style="font-size:32px">📷</span><br>${i}</div></div>`;
+                }
+            }
+            grid.innerHTML = html;
+        }
+        
+        function renderUserList() {
+            const container = document.getElementById('userListContainer');
+            if (!container) return;
+            
+            if (allUsers.length === 0) {
+                container.innerHTML = '<div style="padding:20px;">Aucun utilisateur</div>';
+                return;
+            }
+            
+            container.innerHTML = allUsers.map(user => `
+                <div class="user-item" onclick="selectUser('${user.id}')" data-id="${user.id}">
+                    <div>
+                        <div class="user-name">${user.full_name || user.email.split('@')[0]} ${user.role === 'admin' ? '👑' : ''}</div>
+                        <div class="user-email">${user.email}</div>
+                    </div>
+                    <div class="user-stats" id="stats_${user.id}">
+                        <div class="mini-dot"></div><div class="mini-dot"></div><div class="mini-dot"></div><div class="mini-dot"></div><div class="mini-dot"></div>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Charger les stats de chaque utilisateur
+            allUsers.forEach(async user => {
+                const { data } = await supabase.from('deposits').select('*').eq('user_id', user.id);
+                const stats = {1:null,2:null,3:null,4:null,5:null};
+                if (data) data.forEach(d => stats[d.column_number] = d.image_url);
+                const div = document.getElementById(`stats_${user.id}`);
+                if (div) {
+                    div.innerHTML = [1,2,3,4,5].map(i => `<div class="mini-dot ${stats[i] ? 'filled' : ''}"></div>`).join('');
+                }
+            });
+        }
+        
+        window.selectUser = async function(userId) {
+            const { data } = await supabase.from('deposits').select('*').eq('user_id', userId);
+            const images = {1:null,2:null,3:null,4:null,5:null};
+            if (data) data.forEach(d => images[d.column_number] = d.image_url);
+            
+            const grid = document.getElementById('userImagesGrid');
+            if (grid) {
+                let html = '';
+                for (let i=1;i<=5;i++) {
+                    if (images[i]) {
+                        html += `<div class="cell filled" onclick="viewImage('${images[i]}')"><img src="${images[i]}"></div>`;
+                    } else {
+                        html += `<div class="cell"><div style="text-align:center"><span style="font-size:32px">📷</span><br>${i}</div></div>`;
+                    }
+                }
+                grid.innerHTML = html;
+            }
+            
+            // Mettre en surbrillance l'utilisateur sélectionné
+            document.querySelectorAll('.user-item').forEach(el => el.classList.remove('selected'));
+            const selected = document.querySelector(`.user-item[data-id="${userId}"]`);
+            if (selected) selected.classList.add('selected');
+        };
+        
+        window.viewImage = function(url) {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.9);display:flex;justify-content:center;align-items:center;z-index:1000';
+            modal.onclick = () => modal.remove();
+            const img = document.createElement('img');
+            img.src = url;
+            img.style.cssText = 'max-width:90%;max-height:90%;border-radius:10px';
+            modal.appendChild(img);
+            document.body.appendChild(modal);
+        };
+        
+        window.uploadImage = async function(col) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                if (file.size > 2*1024*1024) { alert('Image trop grande (max 2MB)'); return; }
+                const fileName = `${currentUser.id}/${col}_${Date.now()}.jpg`;
+                const { error } = await supabase.storage.from('images').upload(fileName, file);
+                if (error) { alert('Erreur: ' + error.message); return; }
+                const { data: urlData } = supabase.storage.from('images').getPublicUrl(fileName);
+                await supabase.from('deposits').upsert({ user_id: currentUser.id, column_number: col, image_url: urlData.publicUrl });
+                myImages[col] = urlData.publicUrl;
+                renderMyGrid();
+                // Rafraîchir la liste admin si besoin
+                if (document.getElementById('userListContainer')) {
+                    const { data: users } = await supabase.from('users').select('*');
+                    allUsers = users || [];
+                    renderUserList();
+                }
+            };
+            input.click();
+        };
+        
+        window.deleteImage = async function(col) {
+            if (!confirm('Supprimer cette image ?')) return;
+            await supabase.from('deposits').delete().eq('user_id', currentUser.id).eq('column_number', col);
+            myImages[col] = null;
+            renderMyGrid();
+            if (document.getElementById('userListContainer')) {
+                const { data: users } = await supabase.from('users').select('*');
+                allUsers = users || [];
+                renderUserList();
+            }
+        };
+        
+        async function logout() {
+            await supabase.auth.signOut();
+            showLogin();
+        }
+        
+        // Rendre les fonctions globales
+        window.login = login;
+        window.register = register;
+        window.showLogin = showLogin;
+        window.showRegister = showRegister;
+        window.logout = logout;
+        window.selectUser = selectUser;
+        window.viewImage = viewImage;
+        window.uploadImage = uploadImage;
+        window.deleteImage = deleteImage;
+        
+        // Démarrer
+        showLogin();
+    </script>
+</body>
+</html>
