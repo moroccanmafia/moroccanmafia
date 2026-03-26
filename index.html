@@ -62,7 +62,7 @@
             if (error) { alert(error.message); return; }
             currentUser = data.user;
             
-            // Charger mes images
+            // Upload ScreenShot
             const { data: deposits } = await supabase.from('deposits').select('*').eq('user_id', currentUser.id);
             myImages = {1:null,2:null,3:null,4:null,5:null};
             if (deposits) deposits.forEach(d => myImages[d.column_number] = d.image_url);
@@ -91,12 +91,12 @@
             if (data.user) {
                 await supabase.from('users').insert([{ id: data.user.id, email, full_name: name || email.split('@')[0], role: 'user' }]);
             }
-            alert('Compte créé ! Connectez-vous');
+            alert('Account Created ! Connect');
             showLogin();
         }
         
         // ============ AFFICHAGE ============
-        function showLogin() {
+        function showLogin() {b 
             document.getElementById('app').innerHTML = `
                 <div class="card" style="max-width:400px;margin:0 auto;">
                     <h1>📸 Donation aCC</h1>
